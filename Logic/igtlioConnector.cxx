@@ -232,6 +232,20 @@ int igtlioConnector::Stop()
 
     // NOTE: Thread should be killed by activating ServerStopFlag.
     this->ServerStopFlag = true;
+
+    // Close all client sockets so that ReceiverThreadFunction threads
+    // unblock from their blocking Receive() call and can exit cleanly.
+    {
+      std::lock_guard<std::recursive_mutex> lock(this->ClientMutex);
+      for (Client& client : this->Sockets)
+      {
+        if (client.Socket.IsNotNull())
+        {
+          client.Socket->CloseSocket();
+        }
+      }
+    }
+
     while(this->ConnectionThreadID >= 0 || this->Sockets.size() > 0)
      {
       // Sleep required to keep loop from hanging in release mode
