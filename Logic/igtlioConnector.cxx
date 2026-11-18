@@ -541,10 +541,11 @@ bool igtlioConnector::ReceiveController(int clientID)
   if (!circBuffer)
   {
     circBuffer = igtlioCircularSectionBufferPointer::New();
-    circBuffer->SetPacketMode(igtlioCircularSectionBuffer::SinglePacketMode);
+    // Keep several messages until the main thread reads them, so a busy main thread doesn't lose images or transforms
+    circBuffer->SetPacketMode(igtlioCircularSectionBuffer::MultiplePacketsMode);
     if (strcmp(headerMsg->GetDeviceType(), "VIDEO") == 0)
     {
-      circBuffer->SetPacketMode(igtlioCircularSectionBuffer::MultiplePacketsMode);
+      circBuffer->SetBufferSize(IGTLCB_CIRC_BUFFER_SIZE_VIDEOSTREAM);
     }
 
     std::lock_guard<std::recursive_mutex> lock(this->CircularBufferMutex);
@@ -555,8 +556,6 @@ bool igtlioConnector::ReceiveController(int clientID)
   // Load to the circular buffer
   if (circBuffer && circBuffer->StartPush() != -1)
   {
-    //std::cerr << "Pushing into the circular buffer." << std::endl;
-    circBuffer->StartPush();
     igtl::MessageBase::Pointer buffer = circBuffer->GetPushBuffer();
     buffer->SetMessageHeader(headerMsg);
     buffer->AllocatePack();
@@ -711,6 +710,7 @@ unsigned int igtlioConnector::GetUpdatedSectionBuffersList(NameListType& nameLis
 {
   nameList.clear();
 
+  std::lock_guard<std::recursive_mutex> lock(this->CircularBufferMutex);
   igtlioCircularSectionBufferMap::iterator iter;
   for (iter = this->SectionBuffer.begin(); iter != this->SectionBuffer.end(); iter ++)
     {
@@ -725,6 +725,7 @@ unsigned int igtlioConnector::GetUpdatedSectionBuffersList(NameListType& nameLis
 //----------------------------------------------------------------------------
 igtlioCircularSectionBufferPointer igtlioConnector::GetCircularSectionBuffer(const igtlioDeviceKeyType &key, const int clientID)
 {
+  std::lock_guard<std::recursive_mutex> lock(this->CircularBufferMutex);
   igtlioCircularSectionBufferMap::iterator iter = this->SectionBuffer.find(SectionBufferKey(key, clientID));
   if (iter != this->SectionBuffer.end())
     {
